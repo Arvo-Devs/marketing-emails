@@ -1,7 +1,7 @@
 // @arvo/marketing-emails on the server. createMarketingEmails(config) reads
 // the app's config once and gives back what the app wires up: the route
 // handlers under basePath, sendDue for the app's worker to call every minute
-// (startSending only for an app with no worker yet), and forgetAccount for
+// (startSending for an app with no worker), and forgetAccount for
 // the app's delete-account code. `unsubscribes` is the app's one
 // unsubscribe list, for the app's other email imports (README.md, "One
 // unsubscribe list"). Keep one per process (README.md, "One server file").
@@ -24,9 +24,8 @@ export type MarketingEmails = Readonly<{
    */
   sendDue: (options?: Readonly<{ budgetMs?: number }>) => Promise<SendDueResult>;
   /**
-   * Only for an app with no worker yet, and only where the CTO agrees: a
-   * pass every minute inside this server, from instrumentation.ts, until the
-   * returned function stops it.
+   * For an app with no worker: a pass every minute inside this server, from
+   * instrumentation.ts, until the returned function stops it.
    */
   startSending: (options?: Readonly<{ everyMs?: number }>) => () => void;
   /**

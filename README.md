@@ -58,8 +58,9 @@ migration.
 - **Postgres** through a [postgres.js](https://github.com/porsager/postgres)
   client nothing wraps with drizzle.
 - **Tailwind CSS v4**, with `@source "../node_modules/@arvo/marketing-emails/src";`.
-- **The app's pg-boss worker** (the framework's `apps/worker`): one schedule
-  there sends the emails on time (section 4).
+- **The app's pg-boss worker** (the framework's `apps/worker`), or its own
+  server where it has no worker: one pass a minute sends the emails on time
+  (section 4).
 - **An email service the app already sends with** (Resend in most of ours),
   a From address on a domain it has verified, and the company's postal
   address (the law requires it in every marketing email).
@@ -189,9 +190,8 @@ await boss.work('marketing-emails', async () => {
   `sendOutsideProduction: true`. "Send me a test" works anywhere: it only
   reaches the person sending it.
 
-An app with no worker yet can run the passes inside its web server instead,
-from `instrumentation.ts` with `marketingEmails.startSending()`, only where
-the CTO agrees.
+An app with no worker runs the passes inside its web server instead, from
+`instrumentation.ts` with `marketingEmails.startSending()`.
 
 ## 5. Deleting an account
 
