@@ -2,13 +2,15 @@
 // the app's config once and gives back what the app wires up: the route
 // handlers under basePath, sendDue for the app's worker to call every minute
 // (startSending only for an app with no worker yet), and forgetAccount for
-// the app's delete-account code. Keep one per process (README.md, "One
-// server file").
+// the app's delete-account code. `unsubscribes` is the app's one
+// unsubscribe list, for the app's other email imports (README.md, "One
+// unsubscribe list"). Keep one per process (README.md, "One server file").
 //
 // Server only: it uses Node's crypto. The pages are in ./client.
 import { normalizeConfig, type MarketingEmailsConfig, type MarketingUser } from './config';
 import { createRouteHandlers, type MarketingRouteHandlers } from './server/routes';
 import { createSender, type SendDueResult, type Sleeper } from './server/sender';
+import { resubscribe, unsubscribe, unsubscribedAmong } from './server/marketing';
 
 export type MarketingEmails = Readonly<{
   /** GET, POST and DELETE for one catch-all route file at basePath. */
@@ -34,6 +36,26 @@ export type MarketingEmails = Readonly<{
    * false, so the caller can try again later).
    */
   forgetAccount: (userId: string) => Promise<boolean>;
+  /**
+   * The app's one unsubscribe list, kept by account id: the same rows an
+   * email's Unsubscribe link and the settings switch change. Give it to the
+   * app's other email imports (Retention emails takes it as `unsubscribes`),
+   * so one click stops them all.
+   */
+  unsubscribes: UnsubscribeList;
+}>;
+
+/**
+ * Who said no to the app's emails, by account id. Each call throws when the
+ * database can't be reached, so a caller that can't check sends nothing.
+ */
+export type UnsubscribeList = Readonly<{
+  /** The accounts among these that said no. */
+  unsubscribed: (userIds: readonly string[]) => Promise<Set<string>>;
+  /** Records a no. Saying no twice is the same as once. */
+  add: (userId: string) => Promise<void>;
+  /** Takes a no back ("Subscribe again"). */
+  remove: (userId: string) => Promise<void>;
 }>;
 
 /** Never throws, whatever the config: what is missing is logged and shown on the page. */
@@ -43,6 +65,15 @@ export function createMarketingEmails<User extends MarketingUser = MarketingUser
 ): MarketingEmails {
   const config = normalizeConfig(input);
   const sender = createSender(config, internal.sleep);
+  const database = async () => {
+    const sql = await config.db();
+    if (!sql) throw new Error('[Marketing emails] the unsubscribe list has no database: give createMarketingEmails a db.');
+    return sql;
+  };
+  const account = (userId: string) => {
+    if (typeof userId !== 'string' || !userId) throw new TypeError('[Marketing emails] an unsubscribe needs an account id.');
+    return userId;
+  };
   return {
     routeHandlers: createRouteHandlers(config, sender),
     sendDue: (options) => sender.sendDue({ budgetMs: options?.budgetMs }),
@@ -61,6 +92,11 @@ export function createMarketingEmails<User extends MarketingUser = MarketingUser
         config.log("[Marketing emails] an account's rows were not removed", error);
         return false;
       }
+    },
+    unsubscribes: {
+      unsubscribed: async (userIds) => (Array.isArray(userIds) && userIds.length ? unsubscribedAmong(await database(), userIds) : new Set<string>()),
+      add: async (userId) => unsubscribe(await database(), account(userId), null),
+      remove: async (userId) => resubscribe(await database(), account(userId)),
     },
   };
 }

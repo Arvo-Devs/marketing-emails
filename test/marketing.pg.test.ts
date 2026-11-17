@@ -540,6 +540,38 @@ describe.skipIf(!ROOT_URL)('Marketing emails (pg)', () => {
     expect((await sql`select 1 from marketing_unsubscribes where user_id = 'usr_agency'`).length).toBe(0);
   });
 
+  test("the app's one unsubscribe list: a no from another import stops these emails, and a no from here reads there", async () => {
+    const me = async (who: string) => (await (await app.routeHandlers.GET(request('/api/marketing-emails/me/emails', { cookie: cookieFor(who) }))).json()) as MyEmailsAnswer;
+    // Another of the app's email imports (Retention emails) records a no through the list; twice is the same as once.
+    await app.unsubscribes.add('usr_agency');
+    await app.unsubscribes.add('usr_agency');
+    expect(await app.unsubscribes.unsubscribed(['usr_agency', 'usr_creator', 'usr_nobody', 'usr_agency'])).toEqual(new Set(['usr_agency']));
+    expect(await app.unsubscribes.unsubscribed([])).toEqual(new Set());
+    expect(await me('agency')).toEqual({ available: true, subscribed: false });
+    await newEmail('Hello');
+    await slotDue(sql, 2);
+    await app.sendDue();
+    expect(out.sent.map((e) => e.to).sort()).toEqual(['creator@example.test', 'other@example.test']);
+
+    // A no from the settings switch here is a no for the other import.
+    await post('/api/marketing-emails/me/emails', { subscribed: false }, 'creator');
+    expect(await app.unsubscribes.unsubscribed(['usr_agency', 'usr_creator', 'usr_other'])).toEqual(new Set(['usr_agency', 'usr_creator']));
+
+    // Taking it back from the other import: the switch reads yes again.
+    await app.unsubscribes.remove('usr_agency');
+    expect(await me('agency')).toEqual({ available: true, subscribed: true });
+
+    // Many accounts at once are read in batches.
+    for (const person of many(1200)) if (Number(person.id.slice(4)) % 3 === 0) await app.unsubscribes.add(person.id);
+    expect((await app.unsubscribes.unsubscribed(many(1200).map((p) => p.id))).size).toBe(400);
+
+    // With no database to ask, the list throws instead of answering "nobody", so the other import sends nothing.
+    const none = make({ db: () => null });
+    await expect(none.unsubscribes.unsubscribed(['usr_agency'])).rejects.toThrow();
+    await expect(none.unsubscribes.add('usr_agency')).rejects.toThrow();
+    await expect(app.unsubscribes.add('')).rejects.toThrow();
+  });
+
   test('send me a test: only to the person asking, marked as a test, ten an hour', async () => {
     const send = (body: Record<string, unknown>) => post('/api/marketing-emails/manage/test', body);
     const response = await send({ kind: 'feature', subject: 'Try it', html: emailHtml('Try it') });

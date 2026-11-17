@@ -199,7 +199,29 @@ Call `marketingEmails.forgetAccount(userId)` from the app's delete-account
 code. It removes the account's unsubscribe and the record of the emails it
 got. It never throws; false means try again later.
 
-## 6. The rules
+## 6. One unsubscribe list per app
+
+One click stops every email someone can say no to. The list is this
+package's (`marketing_unsubscribes`, kept by account id), and
+`marketingEmails.unsubscribes` hands it to the app's other email imports,
+like Retention emails:
+
+```ts
+// Retention emails' server file, in an app that has Marketing emails too
+unsubscribes: marketingEmails.unsubscribes,
+```
+
+| Call | What it does |
+|---|---|
+| `unsubscribed(userIds)` | The accounts among these that said no. |
+| `add(userId)` | Records a no. Twice is the same as once. |
+| `remove(userId)` | Takes it back ("Subscribe again"). |
+
+Each call throws when the database can't be reached, so the other import
+sends nothing rather than guess. In an app with both, word the settings
+switch for both: `<MarketingEmailsSetting description="..." />`.
+
+## 7. The rules
 
 **Sending**
 
@@ -252,6 +274,8 @@ got. It never throws; false means try again later.
   the link only asks (mail scanners open every link); the button, or the
   inbox's own Unsubscribe button, does it. **Subscribe again** undoes it.
 - `<MarketingEmailsSetting />` changes the same list, so the two always agree.
+- It is the app's one list (section 6): a no recorded by another of the
+  app's email imports stops these emails too, and the other way round.
 
 ## Tests
 

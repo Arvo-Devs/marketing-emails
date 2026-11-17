@@ -370,3 +370,14 @@ export async function unsubscribe(sql: MarketingSql, userId: string, emailId: st
 export async function resubscribe(sql: MarketingSql, userId: string): Promise<void> {
   await sql`delete from marketing_unsubscribes where user_id = ${userId}`;
 }
+
+/** The accounts among these that said no, read in batches of 500. */
+export async function unsubscribedAmong(sql: MarketingSql, userIds: readonly string[]): Promise<Set<string>> {
+  const ids = [...new Set(userIds.filter((id) => typeof id === 'string' && id !== ''))];
+  const found = new Set<string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const rows = await sql<{ user_id: string }[]>`select user_id from marketing_unsubscribes where user_id in ${sql(ids.slice(i, i + 500))}`;
+    for (const row of rows) found.add(row.user_id);
+  }
+  return found;
+}
